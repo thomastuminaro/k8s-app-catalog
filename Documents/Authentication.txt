@@ -1,0 +1,9 @@
+**** Authentication worklow
+
+Using FastAPI Auth for creating user accounts 
+=> each user account is tied to a FastAPI Auth role, which has its own kubeconfig file
+=> k8s has config (cluster-roles and rolebindings) to authorize operations
+=> at first : use basic HTTP authentication : https://betterstack.com/community/guides/scaling-python/authentication-fastapi/ 
+=> can use TinyDB to store all users 
+
+FastAPI calls in k8s python client (kubeconfig or serviceaccount)

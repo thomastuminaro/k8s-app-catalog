@@ -1,0 +1,44 @@
+**** Project overview 
+
+Python application :
+=> Users can connect to a portal : CLI first, then will see if can create GUI
+=> On their portal, they access a catalog of applications : based of Helm templates 
+=> They can choose to deploy applications and manage them 
+---> view installed apps, view status, remove apps, clone apps ? 
+=> create also a local Helm repository accessible through HTTP
+
+Two types of users : 
+=> admins : manage the catalog apps and enforce defaults and limits, add users
+=> users : browse through catalog and manage their apps
+=> should have user management, can use FastAPI auth 
+
+**** Core components 
+
+kubernetes-python client library 
+=> allows to connect to k8s from Python app, useful to create and check resources 
+=> https://github.com/kubernetes-client/python 
+
+pyhelm3 
+=> manage Helm packages with Python
+=> https://github.com/azimuth-cloud/pyhelm3
+
+FastAPI 
+=> main API for the project : intermediate between users and k8s
+
+Typer 
+=> main CLI tool to manage
+
+Django
+=> optional : to get web UI 
+
+**** First step 
+
+Create a simple Python typer program which can create some k8s applications
+
+
+
+
+
+
+
+
