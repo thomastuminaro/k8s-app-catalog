@@ -4,10 +4,45 @@ import json
 import time
 
 KUBECONFIG_PATH = Path(__file__).parent / "kubeconfig"
+RESOURCES_DETAILS_PATH = Path(__file__).parent / "k8s_resources.json"
 
 config.load_kube_config(str(KUBECONFIG_PATH))
 
 v1 = client.CoreV1Api()
+apps = client.AppsV1Api()
+rbac = client.RbacAuthorizationV1Api()
+network = client.NetworkingV1Api()
+
+with open(RESOURCES_DETAILS_PATH, "r") as f:
+    resources = json.load(f)
+
+class Resource():
+    def __init__(self, name: str, kind: str, namespace: str = ""):
+        self.name = name
+        self.namespace = namespace
+        self.kind = kind 
+
+    def __str__(self):
+        if self.namespace:
+            return f"{self.name} of type {self.kind} from {self.namespace} namespace."
+        else:
+            return f"Cluster resource {self.name} of type {self.kind}."
+        
+    def get_resource(self): 
+        if self.namespace:
+            func = identify_api(api_descr=self.kind, prefix="read_namespaced_") # identify_api returns getattr(k8s_api_client_instance, function to run)
+            return func(name=self.name, namespace=self.namespace) # type: ignore
+        else:
+            func = identify_api(api_descr=self.kind, prefix="read_")
+            return func(name=self.name) # type: ignore
+    
+    def _check_exists(self):
+        try:
+            self.get_resource()
+            return True
+        except:
+            return False
+
 
 class Pod():
     def __init__(self, name: str, namespace: str):
@@ -92,10 +127,34 @@ class Pod():
 def list_all_namespace_pods(namespace):
     return [ pod.metadata.name for pod in v1.list_namespaced_pod(namespace=namespace).items ]
 
+def list_all_resources(resource: str, namespace: str=""):
+    if namespace:
+        func = identify_api(api_descr=resource, prefix="list_namespaced_")
+        print(func(namespace[*].names))
+        return [ rsr.metadata.name for rsr in func(resource, namespace).items ] # type: ignore
+    else:
+        pass
+
 def list_all_namespaces():
     return [ ns.metadata.name for ns in v1.list_namespace().items ]
 
+def identify_api(api_descr: str, prefix: str):
+    for k, v in resources.items():
+        if api_descr in v["names"]:
+            f_name = f"{prefix}{k}"
+            if v["api"] == "CoreV1":
+                return getattr(v1, f_name)
+            elif v["api"] == "AppsV1":
+                return getattr(apps, f_name)
+            elif v["api"] == "RbacAuthorizationV1":
+                return getattr(rbac, f_name)
+            elif v["api"] == "NetworkingV1":
+                return getattr(network, f_name)
+
 if __name__ == "__main__":
-    #new = Pod("test-python", "default")
-    #new.create("nginx")
-    print(list_all_namespaces())
+    a = Resource(name="viededw", kind="clusterrole")
+    b = Resource(name="argocd-server", kind="deploy", namespace="argocd")
+    c = Resource(name="argdedocd-server", kind="deploy", namespace="argocd")
+    #print(a._check_exists()) # type: ignore
+
+    print(list_all_resources(resource="pod", namespace="argocd"))

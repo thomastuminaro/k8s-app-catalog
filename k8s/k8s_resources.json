@@ -1,0 +1,38 @@
+{
+    "pod": {
+        "api": "CoreV1",
+        "names": ["pod", "Pod", "pods, Pods"]
+    }, 
+    "config_map": {
+        "api": "CoreV1",
+        "names": ["cm", "configmaps", "configmap", "ConfigMap", "ConfigMaps"]
+    },
+    "secret": {
+        "api": "CoreV1",
+        "names": ["secret", "Secret", "secrets", "Secrets"]
+    },
+    "service": {
+        "api": "CoreV1",
+        "names": ["service", "svc", "svcs", "services", "Service", "Services"]
+    },
+    "deployment": {
+        "api": "AppsV1",
+        "names": ["deploy", "Deploy", "Deployment", "Deployments", "deployment", "deployments"]
+    },
+    "persistent_volume_claim": {
+        "api": "CoreV1",
+        "names": ["pvc", "Pvc", "PersistentVolumeClaim", "PersistentVolumeClaims", "persistentvolumeclaim", "persistentvolumeclaims", "pvcs"]
+    },
+    "ingress": {
+        "api": "NetworkingV1",
+        "names": ["ingress", "Ingress"]
+    },
+    "cluster_role": {
+        "api": "RbacAuthorizationV1",
+        "names": ["clusterrole", "ClusterRole", "ClusterRoles", "clusterroles"]
+    },
+    "role" : {
+        "api": "RbacAuthorizationV1",
+        "names": ["role", "Role", "Roles", "roles"]
+    }
+}
