@@ -15,6 +15,10 @@
         "api": "CoreV1",
         "names": ["service", "svc", "svcs", "services", "Service", "Services"]
     },
+    "node": {
+        "api": "CoreV1",
+        "names": ["node", "n", "Node", "nodes", "Nodes"]
+    },
     "deployment": {
         "api": "AppsV1",
         "names": ["deploy", "Deploy", "Deployment", "Deployments", "deployment", "deployments"]

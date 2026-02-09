@@ -131,7 +131,7 @@ class mainWindow(QtWidgets.QWidget):
         
         for podname in to_delete:
             pod = Pod(name=podname.text(), namespace=ns)
-            if not pod.delete():
+            if not pod.delete_resource():
                 result = False
         
         if result:
