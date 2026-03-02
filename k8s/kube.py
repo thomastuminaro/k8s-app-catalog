@@ -101,9 +101,19 @@ class Pod(Resource):
        
     def get_status(self):
         if super()._check_exists():
-            status = super().get_resource().status.phase 
-            print(f"Pod {self.name} status is : {status}.")
-            return True
+            pod_status = {
+                "phase": "",
+                "tot_conts": 0,
+                "ready_conts": 0,
+                "node": ""
+            }
+            pod_status["phase"] = super().get_resource().status.phase 
+            pod_status["tot_conts"] = len(super().get_resource().spec.containers)
+            pod_status["node"] = super().get_resource().status.host_ip
+            for i in range(pod_status["tot_conts"]):
+                if super().get_resource().status.container_statuses[i].ready:
+                    pod_status["ready_conts"] += 1 
+            return pod_status
         else:
             print(f"The pod {self.name} doesn't exist in namespace {self.namespace}.")
             return False    
@@ -119,13 +129,6 @@ class Pod(Resource):
             print(f"Found container image {pod.spec.containers[i].image}") # type: ignore
             i += 1
         return True
-    
-    """ def _get_pod_containers(self):
-        pod = v1.read_namespaced_pod(name=self.name, namespace=self.namespace)
-        containers = []
-        for cont in pod.spec.containers: # type: ignore
-            containers.append(cont.name)
-        return containers """
         
     def create(self, cont_image: str, labels: Optional[Dict] = None, storage: Optional[List[Dict]] = None):
         if not super()._check_exists():
@@ -152,6 +155,56 @@ class Pod(Resource):
                 return True
         else:
             print(f"The pod {self.name} already exist in namespace {self.namespace}, skipping...")
+            return False
+
+
+########################################################################################################################
+########################################################################################################################
+#####################                                DEPLOY CLASS                                  #####################
+########################################################################################################################
+########################################################################################################################
+
+class Deploy(Resource):
+    def __init__(self, name: str, namespace: str):
+        super().__init__(name=name, namespace=namespace, kind="deploy")
+
+    def get_status(self):
+        if super()._check_exists():
+            deploy_status = {
+                "replicas": 0,
+                "ready_replicas": 0
+            }
+            deploy_status["replicas"] = super().get_resource().status.replicas
+            deploy_status["ready_replicas"] = super().get_resource().status.ready_replicas
+            return deploy_status
+        else:
+            print("Cannot find the deployment {self.name} in namespace {self.namespace}.")
+            return False
+        
+    def create(self, image: str, deploy_labels: Optional[Dict] = None, deploy_replicas = 1):
+        if not super()._check_exists():
+            try:
+                print(f"Creating deployment {self.name} in namespace {self.namespace}...")
+                if deploy_labels == None:
+                    auto_labels = {
+                        "app": self.name
+                    }
+                
+                deploy_metadata = client.V1ObjectMeta(name=self.name, namespace=self.namespace, labels=auto_labels)
+                cont = client.V1Container(name=self.name, image=image)
+                deploy_template = client.V1PodTemplateSpec(metadata=deploy_metadata, spec=client.V1PodSpec(containers=[cont]))
+                deploy_spec = client.V1DeploymentSpec(replicas=deploy_replicas, selector={"matchLabels": auto_labels}, template=deploy_template)
+                deploy = client.V1Deployment(api_version="apps/v1", kind="Deployment", metadata=deploy_metadata, spec=deploy_spec)
+                apps.create_namespaced_deployment(namespace=self.namespace, body=deploy)
+            except client.ApiException as err:
+                if "namespace" in err.body and "not found" in err.body: # type: ignore
+                    print(f"Cannot create pod as namespace {self.namespace} doesn't exist.")
+                    return False
+            else:
+                print("Successfully created the deploy {self.name} in namespace {self.namespace}")
+                return True
+        else:
+            print("Error.")
             return False
 
 
@@ -209,7 +262,8 @@ def identify_api(api_descr: str, prefix: str):
 if __name__ == "__main__":
     a = Resource(name="view", kind="clusterrole")
     b = Resource(name="nginx", kind="deploy", namespace="default")
-    c = Pod(name="test", namespace="default")
+    c = Pod(name="csi-node-driver-62whl", namespace="calico-system")
+    d = Deploy(name="testdeploy", namespace="default")
 
     common_labels = {
         "project": "python",
@@ -217,8 +271,11 @@ if __name__ == "__main__":
     }
     #print(a._check_exists()) # type: ignore
 
-    c.create(cont_image="nginx", labels=common_labels)
-    c.get_status()
+    #c.create(cont_image="nginx", labels=common_labels)
+    d.create(image="nginx", deploy_replicas=2)
+    time.sleep(10)
+    print(d.get_status())
+    #print(len(c.get_resource().spec.containers))
 
     #b.delete_resource()
 
