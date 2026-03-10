@@ -10,7 +10,7 @@ from pathlib import Path
 import json
 import time
 from pprint import pprint
-from typing import List, Dict, Optional
+from typing import List, Dict, Optional, Self
 import logging
 
 
@@ -58,7 +58,7 @@ class Resource():
         else:
             return f"Cluster resource {self.name} of type {self.kind}."
         
-    def _check_exists(self):
+    def _check_exists(self) -> bool:
         try:
             self.get_resource()
             return True
@@ -73,21 +73,19 @@ class Resource():
             func = identify_api(api_descr=self.kind, prefix="read_")
             return func(name=self.name) # type: ignore
         
-    def delete_resource(self):
+    def delete_resource(self) -> None:
         if self.namespace:
             func = identify_api(api_descr=self.kind, prefix="delete_namespaced_")
             try:
                 func(name=self.name, namespace=self.namespace) # type: ignore
             except client.ApiException as err:
-                #print(type(manage_errors(err, self.name, self.kind, action="delete")[0]))
-                #print(manage_errors(err, self.name, self.kind, action="delete")[1])
                 if manage_errors(err, self.name, self.kind, action="delete")[0] == 404:
                     msg = f"Skipping deletion of {self.kind} {self.name} : already deleted." #type: ignore
                     logging.warning(msg)
                     return
                 else:
                     logging.error(manage_errors(err, self.name, self.kind, action="delete")[1])
-                    raise
+                    raise RuntimeError(f"Couldn't delete {self.kind} {self.name} : {err}.")
             else:
                 logging.info(f"Successfully deleted pod {self.name} from namespace {self.namespace}.")
                 return
@@ -96,14 +94,17 @@ class Resource():
             func = identify_api(api_descr=self.kind, prefix="delete_namespaced_")
             try:
                 func(name=self.name) # type: ignore
-                return 
             except client.ApiException as err:
-                manage_errors(err, self.name, self.kind, action="delete")
-                raise
-            except Exception as err:
-                print(f"Cannot delete resource due to {err}")
-                raise
-
+                if manage_errors(err, self.name, self.kind, action="delete")[0] == 404:
+                    msg = f"Skipping deletion of {self.kind} {self.name} : already deleted." #type: ignore
+                    logging.warning(msg)
+                    return
+                else:
+                    logging.error(f"Couldn't delete {self.kind} {self.name} : {err}.")
+                    raise RuntimeError(f"Couldn't delete {self.kind} {self.name} : {err}.")
+            else:
+                logging.info(f"Successfully deleted {self.kind} {self.name}.")
+                return
 
 ########################################################################################################################
 ########################################################################################################################
@@ -116,7 +117,7 @@ class Pod(Resource):
     def __init__(self, name: str, namespace: str):
         super().__init__(name=name, namespace=namespace, kind="pod")
   
-    def get_status(self):
+    def get_status(self) -> Dict:
         if super()._check_exists():
             pod_status = {
                 "phase": "",
@@ -132,8 +133,8 @@ class Pod(Resource):
                     pod_status["ready_conts"] += 1 
             return pod_status
         else:
-            print(f"The pod {self.name} doesn't exist in namespace {self.namespace}.")
-            return False    
+            logging.warning(f"The pod {self.name} doesn't exist in namespace {self.namespace}.")
+            return {}    
         
     def _check_cont_status(self, conts: list):
         pod = super().get_resource()
@@ -141,13 +142,13 @@ class Pod(Resource):
         while i < len(pod.spec.containers): # type: ignore
             if pod.status.container_statuses[i].state.waiting: # type: ignore
                 if pod.status.container_statuses[i].state.waiting.reason == "ImagePullBackOff" or pod.status.container_statuses[i].state.waiting.reason == "ErrImagePull": # type: ignore
-                    print(f"Container image {pod.spec.containers[i].image} cannot be fetched.") # type: ignore
+                    logging.warning(f"Container image {pod.spec.containers[i].image} cannot be fetched.") # type: ignore
                     return False
             #print(f"Found container image {pod.spec.containers[i].image}") # type: ignore
             i += 1
         return True
         
-    def create(self, cont_image: str, labels: Optional[Dict] = None, storage: Optional[List[Dict]] = None):
+    def create(self, cont_image: str, labels: Optional[Dict] = None, storage: Optional[List[Dict]] = None) -> Pod:
         if not super()._check_exists():
             try: 
                 logging.info(f"Creating pod {self.name} in namespace {self.namespace}...")
@@ -162,18 +163,18 @@ class Pod(Resource):
                 if not self._check_cont_status(containers):
                     logging.error(f"Failed to create the pod {self.name}, image cannot be found, deleting pod...")
                     super().delete_resource()
-                    raise
+                    raise RuntimeError("Failed to create pod {self.name} in namespace {self.namespace} as image cannot be pulled.")
             except client.ApiException as err:
-                err_status = manage_errors(err, self.name, self.kind, action="create")[0]
+                #err_status = manage_errors(err, self.name, self.kind, action="create")[0]
                 err_msg = manage_errors(err, self.name, self.kind, action="create")[1]
                 logging.error(err_msg)
-                raise
+                raise RuntimeError("Failed to create pod {self.name} in namespace {self.namespace}") from err
             else:
                 logging.info(f"Succesfully created pod {self.name} in namespace {self.namespace}")
-                return
+                return Pod(self.name, self.namespace)
         else:
             logging.warning(f"The pod {self.name} already exist in namespace {self.namespace}, skipping...")
-            return
+            return Pod(self.name, self.namespace)
 
 
 ########################################################################################################################
@@ -186,7 +187,7 @@ class Deploy(Resource):
     def __init__(self, name: str, namespace: str):
         super().__init__(name=name, namespace=namespace, kind="deploy")
 
-    def get_status(self):
+    def get_status(self) -> Dict | None : 
         if super()._check_exists():
             deploy_status = {
                 "replicas": 0,
@@ -196,34 +197,38 @@ class Deploy(Resource):
             deploy_status["ready_replicas"] = super().get_resource().status.ready_replicas
             return deploy_status
         else:
-            print("Cannot find the deployment {self.name} in namespace {self.namespace}.")
-            return False
+            logging.warning("Cannot find the deployment {self.name} in namespace {self.namespace}.")
+            return None
         
-    def create(self, image: str, deploy_labels: Optional[Dict] = None, deploy_replicas = 1):
+    def create(self, image: str, deploy_labels: Optional[Dict] = None, deploy_replicas = 1) -> Deploy: 
         if not super()._check_exists():
             try:
-                print(f"Creating deployment {self.name} in namespace {self.namespace}...")
-                if deploy_labels == None:
-                    auto_labels = {
+                logging.info(f"Creating deployment {self.name} in namespace {self.namespace}...")
+                if deploy_labels is None:
+                    deploy_labels = {
                         "app": self.name
                     }
                 
-                deploy_metadata = client.V1ObjectMeta(name=self.name, namespace=self.namespace, labels=auto_labels)
+                deploy_metadata = client.V1ObjectMeta(name=self.name, namespace=self.namespace, labels=deploy_labels)
                 cont = client.V1Container(name=self.name, image=image)
                 deploy_template = client.V1PodTemplateSpec(metadata=deploy_metadata, spec=client.V1PodSpec(containers=[cont]))
-                deploy_spec = client.V1DeploymentSpec(replicas=deploy_replicas, selector={"matchLabels": auto_labels}, template=deploy_template)
+                deploy_spec = client.V1DeploymentSpec(replicas=deploy_replicas, selector={"matchLabels": deploy_labels}, template=deploy_template)
                 deploy = client.V1Deployment(api_version="apps/v1", kind="Deployment", metadata=deploy_metadata, spec=deploy_spec)
                 apps.create_namespaced_deployment(namespace=self.namespace, body=deploy)
             except client.ApiException as err:
                 if "namespace" in err.body and "not found" in err.body: # type: ignore
-                    print(f"Cannot create pod as namespace {self.namespace} doesn't exist.")
-                    return False
+                    logging.error(f"Cannot create pod as namespace {self.namespace} doesn't exist.")
+                    raise RuntimeError("Failed to create deployment {self.name} in namespace {self.namespace}") from err
+                else:
+                    logging.error(f"Couldn't create deployment : {err}")
+                    raise RuntimeError("Failed to create deployment {self.name} due to : {err}.")
+
             else:
-                print("Successfully created the deploy {self.name} in namespace {self.namespace}")
-                return True
+                logging.info("Successfully created the deploy {self.name} in namespace {self.namespace}.")
+                return Deploy(name=self.name, namespace=self.namespace)
         else:
-            print("Error.")
-            return False
+            logging.warning(f"Skipping creation of {self.name} {self.kind} in namespace {self.namespace} as found already one with the same name.")
+            return Deploy(name=self.name, namespace=self.namespace)
 
 
 ########################################################################################################################
@@ -269,7 +274,7 @@ def identify_api(api_descr: str, prefix: str):
             elif v["api"] == "NetworkingV1":
                 return getattr(network, f_name)
 
-def manage_errors(err : client.ApiException, rsc_name : str, rsc_kind : str, action: str):
+def manage_errors(err : client.ApiException, rsc_name : str, rsc_kind : str, action: str) -> tuple:
     try:
         msg = f"Error with {action} of {rsc_kind} {rsc_name} : {json.loads(err.body).get("message", err.reason).replace('"', '')}" #type: ignore
     except Exception as e:
@@ -288,7 +293,9 @@ if __name__ == "__main__":
     a = Pod(name="test1", namespace="default")
     a.create(cont_image="nginx")
 
-    b = Pod(name="test1", namespace="default")
+    print(type(a.get_resource()))
+
+"""     b = Pod(name="test1", namespace="default")
     b.create(cont_image="nginx")
 
     a.delete_resource()
@@ -297,6 +304,6 @@ if __name__ == "__main__":
 
     c = Pod(name="test2", namespace="default")
     c.create(cont_image="ngifezfeznx")
-   
+    """
 
 

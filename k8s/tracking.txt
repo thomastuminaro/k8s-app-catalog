@@ -1,0 +1,6 @@
+10/11 *********************************
+
+Added type hinting + fixed raise errors 
+Changed return types 
+Started unit testing for pods and deploys 
+Next step : do UI with more info 
